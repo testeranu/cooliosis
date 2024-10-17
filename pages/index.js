@@ -1,61 +1,200 @@
+// imports
 import axios from 'axios';
 import Head from 'next/head';
 import config from '../config';
+import { remark } from 'remark';
+import html from 'remark-html';
+import gfm from 'remark-gfm';
+import Link from 'next/link';
 
-export default function HomePage({ article }) {
-  if (!article) return <div>Home page content not found</div>;
+// Function to process Markdown content
+async function processMarkdown(content) {
+  let unescapedContent = content.replace(/\\n/g, '\n');
+  unescapedContent = unescapedContent.replace(/^(#{1,6})/gm, '$1 ');
 
-  const { attributes } = article;
+  const processedContent = await remark()
+    .use(gfm)
+    .use(html)
+    .process(unescapedContent);
+
+  return processedContent.toString();
+}
+
+// Function to parse styles
+function parseStyles(styles) {
+  if (typeof styles === 'string') {
+    try {
+      return JSON.parse(styles);
+    } catch (error) {
+      console.error('Error parsing styles string:', error);
+      return {};
+    }
+  } else if (typeof styles === 'object' && styles !== null) {
+    return styles;
+  } else {
+    console.error('Invalid styles format:', styles);
+    return {};
+  }
+}
+
+// Function to fetch image data from Unsplash
+async function fetchImageData(keywords) {
+  const accessKey = config.UNSPLASH_ACCESS_KEY;
+  const query = encodeURIComponent(keywords.replace(/,/g, ' '));
+  const url = `https://api.unsplash.com/search/photos?query=${query}&client_id=${accessKey}&per_page=1`;
+
+  try {
+    const res = await axios.get(url);
+    const results = res.data.results;
+    if (results.length > 0) {
+      const photo = results[0];
+      const imageUrl = photo.urls.regular;
+      const photographerName = photo.user.name;
+      const photographerProfileUrl = photo.user.links.html;
+      return { imageUrl, photographerName, photographerProfileUrl };
+    } else {
+      return null;
+    }
+  } catch (error) {
+    console.error('Error fetching image from Unsplash:', error);
+    return null;
+  }
+}
+
+// Main component
+export default function HomePage({ homeArticle, otherArticles }) {
+  if (!homeArticle) return <div>Home page content not found</div>;
+
+  const { attributes } = homeArticle;
+
+  const containerStyles = parseStyles(attributes.containerStyles);
+  const headerStyles = parseStyles(attributes.headerStyles);
+  const bodyStyles = parseStyles(attributes.bodyStyles);
+  const paragraphStyles = parseStyles(attributes.paragraphStyles);
 
   return (
-    <div className={`${attributes.containerStyles || 'container mx-auto px-4 py-8 max-w-3xl'}`}>
+    <div className="container" style={containerStyles}>
       <Head>
-        <title>{attributes.MetTTitle}</title>
+        <title>{attributes.MetaTitle}</title>
         <meta name="description" content={attributes.MetaDescription} />
         <link rel="canonical" href={`https://${attributes.CanonicalURL}`} />
-        <script type="application/ld+json">{attributes.Schema}</script>
+        {attributes.Schema && (
+          <script type="application/ld+json">{JSON.stringify(attributes.Schema)}</script>
+        )}
       </Head>
 
-      <main>
-        <header className={attributes.headerStyles || 'mb-8'}>
-          <h1 className="text-4xl font-bold mb-2 text-gray-800">{attributes.H1}</h1>
-          <h2 className="text-2xl font-semibold text-gray-700">{attributes.Title}</h2>
-        </header>
+      <header className="header" style={headerStyles}>
+        <h1>{attributes.H1}</h1>
+        <h2>{attributes.Title}</h2>
+        {attributes.imageUrl && (
+          <div>
+            <img src={attributes.imageUrl} alt={attributes.Title} />
+            <p style={{ fontSize: '12px', color: '#666' }}>
+              Photo by{' '}
+              <a
+                href={attributes.photographerProfileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {attributes.photographerName}
+              </a>{' '}
+              on{' '}
+              <a href="https://unsplash.com" target="_blank" rel="noopener noreferrer">
+                Unsplash
+              </a>
+            </p>
+          </div>
+        )}
+      </header>
 
-        <div className={attributes.bodyStyles || 'prose max-w-none'}>
-          <p className={attributes.paragraphStyles || 'text-lg mb-4 text-gray-600'}>{attributes.Paragraph}</p>
-          <div dangerouslySetInnerHTML={{ __html: attributes.Markdown }} />
-        </div>
+      <main className="content" style={bodyStyles}>
+        <p style={paragraphStyles}>{attributes.Paragraph}</p>
+        {attributes.ProcessedMarkdown && (
+          <div dangerouslySetInnerHTML={{ __html: attributes.ProcessedMarkdown }} />
+        )}
       </main>
 
-      <footer className="mt-8 text-sm text-gray-500">
-        <p>Last updated: {new Date(attributes.updatedAt).toLocaleDateString()}</p>
-      </footer>
+      <section className="article-selection">
+  <h2>Explore More</h2>
+  <div className="article-grid">
+    {otherArticles.map((article) => (
+      <Link href={article.attributes.urlSlug} key={article.id}>
+        <a className="article-card">
+          {article.attributes.imageUrl && (
+            <div className="image-container">
+              <img src={article.attributes.imageUrl} alt={article.attributes.Title} width={"650px"} />
+            </div>
+          )}
+          <h3>{article.attributes.Title}</h3>
+          <p>{article.attributes.Paragraph.substring(0, 100)}...</p>
+        </a>
+      </Link>
+    ))}
+  </div>
+</section>
     </div>
   );
 }
 
+// getStaticProps function
 export async function getStaticProps() {
   try {
     const res = await axios.get(config.API_URL, {
       headers: {
-        Authorization: `Bearer ${config.API_TOKEN}`
-      }
+        Authorization: `Bearer ${config.API_TOKEN}`,
+      },
     });
     const allArticles = res.data.data;
-    const article = allArticles.find(
-      article => 
+    const homeArticle = allArticles.find(
+      (article) =>
         article.attributes.Domain === config.HARDCODED_DOMAIN &&
         article.attributes.urlSlug === '/'
     );
 
-    if (!article) {
+    const otherArticles = allArticles.filter(
+      (article) =>
+        article.attributes.Domain === config.HARDCODED_DOMAIN &&
+        article.attributes.urlSlug !== '/'
+    );
+
+    if (!homeArticle) {
       return { notFound: true };
     }
 
+    if (homeArticle.attributes.Markdown) {
+      homeArticle.attributes.ProcessedMarkdown = await processMarkdown(
+        homeArticle.attributes.Markdown
+      );
+    }
+
+    // Fetch image data for the homeArticle
+    if (homeArticle.attributes.imgkeywords) {
+      const imageData = await fetchImageData(homeArticle.attributes.imgkeywords);
+      if (imageData) {
+        homeArticle.attributes.imageUrl = imageData.imageUrl;
+        homeArticle.attributes.photographerName = imageData.photographerName;
+        homeArticle.attributes.photographerProfileUrl = imageData.photographerProfileUrl;
+      }
+    }
+
+    // Fetch image data for otherArticles
+    await Promise.all(
+      otherArticles.map(async (article) => {
+        if (article.attributes.imgkeywords) {
+          const imageData = await fetchImageData(article.attributes.imgkeywords);
+          if (imageData) {
+            article.attributes.imageUrl = imageData.imageUrl;
+            article.attributes.photographerName = imageData.photographerName;
+            article.attributes.photographerProfileUrl = imageData.photographerProfileUrl;
+          }
+        }
+      })
+    );
+
     return {
       props: {
-        article,
+        homeArticle,
+        otherArticles,
       },
     };
   } catch (error) {
