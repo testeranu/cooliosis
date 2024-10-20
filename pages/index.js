@@ -89,20 +89,6 @@ export default function HomePage({ homeArticle, otherArticles }) {
         {attributes.imageUrl && (
           <div>
             <img src={attributes.imageUrl} alt={attributes.Title} />
-            <p style={{ fontSize: '12px', color: '#666' }}>
-              Photo by{' '}
-              <a
-                href={attributes.photographerProfileUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {attributes.photographerName}
-              </a>{' '}
-              on{' '}
-              <a href="https://unsplash.com" target="_blank" rel="noopener noreferrer">
-                Unsplash
-              </a>
-            </p>
           </div>
         )}
       </header>

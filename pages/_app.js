@@ -20,7 +20,8 @@ const Header = ({ siteName, menuItems }) => (
 
 const Footer = ({ siteName }) => (
   <footer className="app-footer">
-    <div className="social-links">
+    <div className="SiteMap">
+      <p>Explore the <a href='/sitemap'>sitemap</a></p>
     </div>
     <p>Copyright © {new Date().getFullYear()} {siteName}. All rights reserved.</p>
   </footer>
